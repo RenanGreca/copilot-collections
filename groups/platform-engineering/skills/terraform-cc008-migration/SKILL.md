@@ -126,7 +126,16 @@ section matching the category you classified.
 
 - **DO** declare the mandatory variables: `app_name`, `channel`, `config`,
   `constraints`, `model_uuid` (no default) and `revision`. Add `units` unless the
-  charm is a subordinate charm, which **must** omit it.
+  charm is a subordinate charm, which **must** omit it. Determine this
+  deterministically — never guess from the charm's name or description: read
+  the module's own `charmcraft.yaml` (walk up from the `terraform/` directory
+  to the charm root if it lives elsewhere, e.g. `../charmcraft.yaml` or
+  `../../charmcraft.yaml`) and check its top-level `subordinate:` key.
+  `subordinate: true` means omit `units`; anything else (including the key
+  being absent, which defaults to `false`) means `units` is mandatory. The
+  compliance checker treats `units` as optional either way, so it will not
+  catch a wrong call — getting the classification right is this skill's
+  responsibility, not the checker's.
 - **DO** add the optional CC008 variables when they are relevant to the charm:
   `base`, `expose`, `resources`, `machines`, `endpoint_bindings`,
   `storage_directives`, `offered_endpoints`.
@@ -188,6 +197,25 @@ Use operator-workflows' reusable workflows instead of hand-written scripts.
   `canonical/operator-workflows/.github/workflows/terraform_modules_test.yaml`
   with `terraform-directories` listing every discovered module directory, and
   trigger it on pull requests touching `**/terraform/**`.
+- **DO** add `.github/workflows/generate_terraform_docs.yaml` calling
+  `canonical/operator-workflows/.github/workflows/generate_terraform_docs.yaml`.
+  Trigger it on pushes to `main` that touch `**/terraform/**` or this workflow
+  file, with these caller permissions so it can create the documentation pull
+  request:
+
+  ```yaml
+  permissions:
+    contents: write
+    pull-requests: write
+  ```
+- **DO** pass every discovered module directory as a comma-separated
+  `terraform-directory` input to the docs workflow. Do not rely on its default
+  of `terraform` when modules live elsewhere. Ensure each module's
+  `README.md` contains `<!-- BEGIN_TF_DOCS -->` and `<!-- END_TF_DOCS -->`
+  markers for the generated content.
+- **DO** leave the docs workflow's `auto-merge` input unset to retain its
+  default of `true`. It generates the README changes and opens or updates a
+  `terraform-docs` pull request after the push to `main`.
 - **DO** add each of these three workflow files to *its own* `paths` filter, on
   every trigger it declares:
 
@@ -211,6 +239,8 @@ Use operator-workflows' reusable workflows instead of hand-written scripts.
   ```bash
   git ls-remote https://github.com/canonical/operator-workflows.git main
   ```
+
+  Apply this SHA-pinning requirement to the Terraform docs workflow as well.
 
 ## DO — Repository Housekeeping
 
@@ -282,5 +312,8 @@ terraform -chdir=<module-dir> init -backend=false && terraform -chdir=<module-di
 - `terraform test` passes for every module.
 - Every reusable-workflow call is pinned to a commit SHA, and every terraform
   workflow lists its own file in its `paths` filter.
+- The Terraform docs workflow passes all discovered module directories,
+  targets README files with the Terraform docs markers, and retains the default
+  auto-merge behavior.
 - The diff contains no scratch directory, no `.terraform/` artefact and no
   behavioural change beyond what CC008 requires.
